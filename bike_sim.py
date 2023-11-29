@@ -354,7 +354,7 @@ if __name__ == "__main__":
 
     while cur_dist < 1980:
 
-        action = np.random.randint(1, 50, 1)
+        action = 50
         observation, reward, terminated, info = game.step(action)
         velocity_i.append(observation['velocity'])
         power_cap_i.append(observation['total_power_capacity'])
