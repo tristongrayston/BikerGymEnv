@@ -116,7 +116,7 @@ class BikersEnv(gym.Env):
 
         self.cur_distance += self.cur_velocity.astype(int) // INTERVAL_SIZE
 
-        new_state = x[self.cur_distance]
+        new_agent_position = x[self.cur_distance]
 
         observation = {
                     "velocity" : self.cur_velocity,
@@ -126,10 +126,10 @@ class BikersEnv(gym.Env):
         print(observation)
 
         # existance penalty + how far away from total distance
-        if new_state == MAX_DISTANCE:
+        if new_agent_position == MAX_DISTANCE:
             reward = 10
         else:
-            reward = -1 + new_state/MAX_DISTANCE
+            reward = -1 + new_agent_position/MAX_DISTANCE
 
         terminated = 0
 
