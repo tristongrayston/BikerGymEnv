@@ -10,6 +10,7 @@ from sys import exit
 import gym
 from gym import spaces
 import time
+import json
 
 # CONSTANTS:
 
@@ -45,6 +46,15 @@ DRAG_COEFF = 0.42 # Drag coefficient for a half circle
 
 x = np.rint(np.linspace(MIN_DISTANCE, MAX_DISTANCE, MAX_DISTANCE//INTERVAL_SIZE))
 
+class NpEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super(NpEncoder, self).default(obj)
 
 # Environment Class
 # -----------------
@@ -53,7 +63,6 @@ class BikersEnv(gym.Env):
     def __init__(self, width, height, render_mode):
 
         # Pygame variables
-
         self.metadata = {"render_modes": ["human", "rgb_array", "none"], "render_fps": 4}
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = None
@@ -123,7 +132,6 @@ class BikersEnv(gym.Env):
                     "total_power_capacity" : cur_agent_power_output,
                     "total_distance_travelled" : self.cur_distance
                     }
-        print(observation)
 
         # existance penalty + how far away from total distance
         if new_agent_position == MAX_DISTANCE:
@@ -143,6 +151,12 @@ class BikersEnv(gym.Env):
             self.render(self.cur_velocity)
 
         self.cur_timestep += 1
+
+        print(json.dumps({
+            **observation,
+            "action": action,
+            "reward": reward,
+        }, indent=4, cls=NpEncoder))
 
         return observation, reward, terminated, info
 
@@ -201,13 +215,6 @@ class BikersEnv(gym.Env):
         else:
             fatigue = -(0.0879*(cur_power/MASS) + 2.9214 - CP)
 
-        print("RECOVERY RATE: ", fatigue)
-
-        # The recovery rate works by tracking where we are on the curve.
-        # If we start to go towards zero, we need some place to stop.
-        # Since AWC' -> inf as x -> 0, I picked 0.1 as our time.
-
-        print("WHERE YOU ARE ON CURVE: ", self.cur_AWC_pos)
         if self.cur_AWC_pos + fatigue <= 0.5:
             self.cur_AWC_pos = 0.5
         else:
@@ -245,8 +252,6 @@ class BG(pygame.sprite.Sprite):
         super().__init__(groups)
         ground_surface = pygame.image.load('images/background.png')
         scale_factor = 1.2
-        #print(ground_surface.get_height())
-        #print(ground_surface.get_width())
 
         full_height = ground_surface.get_height() * scale_factor
         full_width = ground_surface.get_width() * scale_factor
@@ -350,8 +355,6 @@ if __name__ == "__main__":
     while cur_dist < 1980:
 
         action = np.random.randint(1, 50, 1)
-
-        print(action)
         observation, reward, terminated, info = game.step(action)
         velocity_i.append(observation['velocity'])
         power_cap_i.append(observation['total_power_capacity'])
@@ -362,8 +365,3 @@ if __name__ == "__main__":
     game.exit()
     plt.plot(velocity_i)
     plt.show()
-
-
-
-
-
