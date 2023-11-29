@@ -24,7 +24,7 @@ save_to_path = ""
 
 
 class ReplayBuffer():
-    
+
     def __init__(self):
         self.memory = deque(maxlen = REPLAY_BUFFER_MAX_LENGTH)
 
@@ -37,10 +37,10 @@ class ReplayBuffer():
         #     return self.memory.pop()
         # else:
         #     return rnd.choice(self.memory)
-        
+
     def erase_memory(self):
         self.memory.clear()
-    
+
     def __len__(self) -> int:
         return len(self.memory)
 
@@ -73,14 +73,14 @@ class DQNAgent():
         )
         return model
 
-    # Method for predicting an action 
+    # Method for predicting an action
     def get_action(self, state):
         #print(state.shape)
         #state = np.transpose(state, (2, 0, 1))
         #print(state.shape)
         self.actions_taken += 1
         self.total_actions_taken += 1
-        EPSILON = (EPSILON_START)*np.exp(-EPSILON_DECAY*self.total_actions_taken) # EPSILON_END 
+        EPSILON = (EPSILON_START)*np.exp(-EPSILON_DECAY*self.total_actions_taken) # EPSILON_END
 
         with torch.no_grad():
             #input = state_array.reshape(1)
@@ -99,12 +99,12 @@ class DQNAgent():
 
 
         return action.item()
-    
+
     def learn(self):
-        ''' We pretty much strictly learn from the memory, not 
+        ''' We pretty much strictly learn from the memory, not
             specifically from the current experience. '''
-        
-        # We just pass through the learn function if the batch size has not been reached. 
+
+        # We just pass through the learn function if the batch size has not been reached.
         if self.replay_memory.__len__() < BUFFER_BATCH_SIZE:
             return
 
@@ -128,18 +128,18 @@ class DQNAgent():
 
         state_tensors = torch.stack(state)
         new_state_tensors = torch.stack(next_state)
-        
+
         rewards = torch.stack(reward)
 
-        # One hot encoding our actions. 
+        # One hot encoding our actions.
         action = torch.eye(TOT_ACTION_SPACE)[action].to(device)
 
         #Find our predictions
         with torch.no_grad():
             # This gets the maximum possible Q value of our next turn
             target_predictions = self.target_model(new_state_tensors).max(dim=1)[0]
-        
-        # this gets the models assessed Q value of the current turn. 
+
+        # this gets the models assessed Q value of the current turn.
         model_predictions = self.model(state_tensors)*action
         model_predictions = torch.sum(model_predictions, dim=1)
 
@@ -150,9 +150,9 @@ class DQNAgent():
 
         # Calculate MSE Loss
         loss = criterion(model_predictions, target)
-        
+
         #print(loss)
-        
+
         # backward pass
         self.optimizer.zero_grad()
         loss.backward()
@@ -189,4 +189,3 @@ class DQNAgent():
 # if __name__ == "__main__":
 #     agent = DQNAgent((1, 10, 20), 4)
 #     agent.get_action(np.zeros(10, 20))
-    

@@ -142,6 +142,8 @@ class BikersEnv(gym.Env):
         if self.render_mode != None:
             self.render(self.cur_velocity)
 
+        self.cur_timestep += 1
+
         return observation, reward, terminated, info
 
 
@@ -356,7 +358,6 @@ if __name__ == "__main__":
         cur_dist = observation['total_distance_travelled']
         dist_i.append(cur_dist)
         time.sleep(0.2)
-        game.cur_timestep += 1
 
     game.exit()
     plt.plot(velocity_i)
