@@ -43,7 +43,7 @@ DRAG_COEFF = 0.42 # Drag coefficient for a half circle
 # Possible Rider Positions
 # ------------------------
 
-x = np.rint(np.linspace(MIN_DISTANCE, MAX_DISTANCE, MAX_DISTANCE/INTERVAL_SIZE))
+x = np.rint(np.linspace(MIN_DISTANCE, MAX_DISTANCE, MAX_DISTANCE//INTERVAL_SIZE))
 
 
 # Environment Class
@@ -105,7 +105,7 @@ class BikersEnv(gym.Env):
         cur_agent_power_output = (max_AWC + CP)
 
         # Calculate the resistance given power output and our current state.
-        resistance = self.resistance(self.cur_distance, cur_agent_power_output)
+        resistance = self.resistance(self.cur_distance)
 
         # Calculate where we are on the AWC curve as a function of our current power output
         # Returns nothing because it modifies the class variable.
