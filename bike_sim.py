@@ -114,7 +114,7 @@ class BikersEnv(gym.Env):
         # Calculate how far we travelled in the race as a function of our power and resistances.
         self.calc_velocity(cur_agent_power_output, resistance)
 
-        self.cur_distance += self.cur_velocity.astype(int) // 5
+        self.cur_distance += self.cur_velocity.astype(int) // INTERVAL_SIZE
 
         new_state = x[self.cur_distance]
 
