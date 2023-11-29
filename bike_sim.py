@@ -91,11 +91,9 @@ class BikersEnv(gym.Env):
         # observation space
         self.observation_space = spaces.Dict(
             {
-                "distance_travelled": spaces.Box(BIKE_MIN, BIKE_MAX, shape=(1,), dtype=float),
-                "power_output": spaces.Box(0, 1, shape=(1,), dtype=float),
-                "fatigue": spaces.Box(0, 1, shape=(1,), dtype=float),
-                "resistance": spaces.Box(-1000, 1000, shape=(1,), dtype=float),
-                "distance": spaces.Box(MIN_DISTANCE, MAX_DISTANCE, shape=(1,), dtype=float)
+                "velocity": spaces.Box(BIKE_MIN, BIKE_MAX, shape=(1,), dtype=float),
+                "total_power_capacity": spaces.Box(0, 1, shape=(1,), dtype=float),
+                "total_distance_travelled": spaces.Box(MIN_DISTANCE, MAX_DISTANCE, shape=(1,), dtype=float)
             }
         )
         # action space - discretized
@@ -180,7 +178,7 @@ class BikersEnv(gym.Env):
         terminated = 0
 
         # if distance <= 0
-        if self.cur_distance == 0:
+        if self.cur_distance == MAX_DISTANCE:
             reward = 100
             terminated = 1
 
@@ -249,13 +247,13 @@ class BikersEnv(gym.Env):
 
         '''
         max_AWC = self.output_power(self.cur_AWC_pos)*MASS
-        print("POWER OUTPUT: ", max_AWC)
+        print(action*(max_AWC + CP))
         return action*(max_AWC + CP)
 
     def calc_velocity(self, cur_KE, resistance):
         
         prev_KE = (1/2)*MASS*(self.cur_vel)**2
-        total_force = prev_KE + cur_KE - resistance
+        total_force = (prev_KE + cur_KE)/2 - resistance
         if total_force > 0:
             self.cur_vel = np.sqrt(2*(total_force)/MASS)
         else:
@@ -264,17 +262,21 @@ class BikersEnv(gym.Env):
     def recovery_rate(self, current_power):
         
         # From Paper 1: Optimal pacing strategy modeling of cycling individual time trials
-        if current_power > CP:
-            rr = -(current_power - CP)
+        if current_power//MASS > CP: # If current power is greater than CP, we want to be further on the curve.
+            fatigue = ((current_power//MASS) - CP)
         else:
-            rr= -(0.0879*current_power + 2.9214 - CP)
+            fatigue = -(0.0879*(current_power/MASS) + 2.9214 - CP)
+
+        print("RECOVERY RATE: ", fatigue)
 
         # The recovery rate works by tracking where we are on the curve. If we start to go towards zero, we need 
         # some place to stop. Since AWC' -> inf as x -> 0, I picked 0.1 as our max power.
-        if self.cur_AWC_pos + rr <= 0.5:
+
+        print("WHERE YOU ARE ON CURVE: ", self.cur_AWC_pos)
+        if self.cur_AWC_pos + fatigue <= 0.5:
             self.cur_AWC_pos = 0.5
         else:
-            self.cur_AWC_pos + rr
+            self.cur_AWC_pos += fatigue
         
     def output_power(self, T):
         '''
@@ -411,28 +413,29 @@ class Bike(pygame.sprite.Sprite):
 if __name__ == "__main__":
     game = BikersEnv(HEIGHT, WIDTH, "human")
     game.reset()
-    rewards = []
+    velocity_i = []
+    power_cap_i = []
+    dist_i = []
+    cur_dist = 0
 
     # for now our agent is random. 
 
-    for _ in range(10):
+    while cur_dist < 1980:
         
-        action = np.random.randint(30, 50, 1)
+        action = np.random.randint(1, 50, 1)
 
         print(action)
         observation, reward, terminated, info = game.step(action)
-        print(observation["total_distance_travelled"])
-        rewards.append(reward)
+        velocity_i.append(observation['velocity'])
+        power_cap_i.append(observation['total_power_capacity'])
+        cur_dist = observation['total_distance_travelled']
+        dist_i.append(cur_dist)
+        time.sleep(0.2)
         game.cur_ts += 1
-        time.sleep(0.5)
 
-    #grads = angle(10000)
-    #print(grads)
-    #angles = angle(x)
-    #print(angles)
-    #print(angle(1000))
-    #plt.plot(angle(x))
-    #plt.show()
+    game.exit()
+    plt.plot(velocity_i)
+    plt.show()
 
 
 
