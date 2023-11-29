@@ -1,7 +1,5 @@
 # Imports
 
-from cgitb import text
-from turtle import down
 import numpy as np
 import pygame
 import matplotlib.pyplot as plt
@@ -36,9 +34,11 @@ CP = 4.2
 MASS = 77 # in kilos
 G = 9.81 # in netwons
 R = 0.0046 # Rolling resistance constant
-AIR = 0.00193 # Air resistance constant
+AIR = 0.193 # Air resistance constant
 DRAG_COEFF = 0.42 # Drag coefficient for a half circle
 
+
+# Running Sim Code: 
 
 
 # Map
@@ -54,7 +54,6 @@ x = np.rint(np.linspace(MIN_DISTANCE, MAX_DISTANCE, MAX_DISTANCE//INTERVAL_SIZE)
 
 # Helper classes
 
-
 class BikersEnv(gym.Env):
     '''
     The most simple and concrete way to get this up and running is to get it into OpenAI gym's format. 
@@ -62,7 +61,6 @@ class BikersEnv(gym.Env):
     render function inside the step function. This could very easily be removed and just thrown inside the game loop. 
     '''
     def __init__(self, width, height, render_mode):
-        # game logic variables[45]
 
         self.metadata = {"render_modes": ["human", "rgb_array", "none"], "render_fps": 4}
         assert render_mode is None or render_mode in self.metadata["render_modes"]
@@ -78,7 +76,7 @@ class BikersEnv(gym.Env):
         self.background = None
         self.ground = None
         self.bike = None
-        self.cur_AWC_pos = 0.5
+        self.cur_AWC_pos = 9
         self.cur_vel = 0
 
         self.font = None
@@ -89,6 +87,7 @@ class BikersEnv(gym.Env):
         ### gym.env variables ###
 
         # observation space
+
         self.observation_space = spaces.Dict(
             {
                 "velocity": spaces.Box(BIKE_MIN, BIKE_MAX, shape=(1,), dtype=float),
@@ -96,6 +95,7 @@ class BikersEnv(gym.Env):
                 "total_distance_travelled": spaces.Box(MIN_DISTANCE, MAX_DISTANCE, shape=(1,), dtype=float)
             }
         )
+
         # action space - discretized
         # the action space takes values of intervals 1/20, with a max value of 1 and a min value of 0.
         self.action_space = spaces.Discrete(TOTAL_ACTION_SPACE)
@@ -107,7 +107,6 @@ class BikersEnv(gym.Env):
         # Tracking variables
         self.cur_distance = MIN_DISTANCE
 
-        
     def step(self, action: int):
         '''
         Actions are discrete values from 0/20 for convenience. 
@@ -125,7 +124,6 @@ class BikersEnv(gym.Env):
         '''
         # regularize the action into something we can use (action -> [0, 50])
         action = action/TOTAL_ACTION_SPACE
-
 
         # Calculate velocity given out power_coefficient.
         '''
@@ -152,15 +150,8 @@ class BikersEnv(gym.Env):
         print("distance travelled:", self.cur_vel)
 
         self.cur_distance += self.cur_vel.astype(int) // 5
-        print(self.cur_distance)
+        #print(self.cur_distance)
         new_state = x[self.cur_distance]
-
-        #print("###State###")
-        #print("Power Output: ", cur_p_o)
-        #print("angle: ", angle)
-        #print("Distance Travelled: ", dist_travelled)
-        #print("Current Distance Away: ", self.cur_distance)
-        #print("new state: ", new_state)
 
         # current max distance = 1k or a value of 1000. This is due to change. 
         observation = {
@@ -188,6 +179,8 @@ class BikersEnv(gym.Env):
         if self.render_mode != "none":
             self.render(self.cur_vel)
 
+        self.cur_ts += 1
+
         return observation, reward, terminated, info
     
 
@@ -202,9 +195,6 @@ class BikersEnv(gym.Env):
             self.ground = Ground(self.all_sprites, 6)
             self.bike = Bike(self.all_sprites, 0.2)
 
-        
-        
-
         self.all_sprites.update(self.dt, vel)
         self.all_sprites.draw(self.screen)
 
@@ -214,7 +204,6 @@ class BikersEnv(gym.Env):
         self.screen.blit(text_surface_ep, (0,30))
         pygame.display.update()
 
-        
     def reset(self):
         self.distance = MAX_DISTANCE
 
@@ -228,15 +217,15 @@ class BikersEnv(gym.Env):
         '''
         angle = self.angles(state)
         #print("Angle!: ", angle)
-        downward_force = G*MASS*np.cos(angle)
+        downward_force = G*MASS*np.sin((angle)*(np.pi/180))
 
         rolling_resistance = R*G*MASS
 
-        drag = 0.5*0.00193*(self.cur_vel**2)*DRAG_COEFF
+        drag = 0.0193*(self.cur_vel**2)
 
         total_resistance = downward_force + rolling_resistance + drag
 
-        return -total_resistance
+        return -total_resistance * self.cur_vel
 
     def power_output(self, action):
         '''
@@ -247,17 +236,19 @@ class BikersEnv(gym.Env):
 
         '''
         max_AWC = self.output_power(self.cur_AWC_pos)*MASS
-        print(action*(max_AWC + CP))
+        #print(action*(max_AWC + CP))
         return action*(max_AWC + CP)
 
     def calc_velocity(self, cur_KE, resistance):
         
         prev_KE = (1/2)*MASS*(self.cur_vel)**2
-        total_force = (prev_KE + cur_KE)/2 - resistance
-        if total_force > 0:
-            self.cur_vel = np.sqrt(2*(total_force)/MASS)
+        print("RESISTANCE: ", resistance)
+        total_power = prev_KE + cur_KE + resistance
+        print("TOTAL POWER:", total_power)
+        if total_power > 0:
+            self.cur_vel = np.sqrt(2*(total_power)/MASS)
         else:
-            self.cur_vel = -np.sqrt(2*(-1*total_force)/MASS)
+            self.cur_vel = -np.sqrt(2*(-1*total_power)/MASS)
 
     def recovery_rate(self, current_power):
         
@@ -267,14 +258,14 @@ class BikersEnv(gym.Env):
         else:
             fatigue = -(0.0879*(current_power/MASS) + 2.9214 - CP)
 
-        print("RECOVERY RATE: ", fatigue)
+        #print("RECOVERY RATE: ", fatigue)
 
         # The recovery rate works by tracking where we are on the curve. If we start to go towards zero, we need 
         # some place to stop. Since AWC' -> inf as x -> 0, I picked 0.1 as our max power.
 
-        print("WHERE YOU ARE ON CURVE: ", self.cur_AWC_pos)
-        if self.cur_AWC_pos + fatigue <= 0.5:
-            self.cur_AWC_pos = 0.5
+        #print("WHERE YOU ARE ON CURVE: ", self.cur_AWC_pos)
+        if self.cur_AWC_pos + fatigue <= 9:
+            self.cur_AWC_pos = 9
         else:
             self.cur_AWC_pos += fatigue
         
@@ -406,9 +397,12 @@ class Bike(pygame.sprite.Sprite):
         self.animate(dt/50)
 
 
-    
-
 # Game loop
+
+
+''' Todo: 
+    -Environment needs to run 
+'''
 
 if __name__ == "__main__":
     game = BikersEnv(HEIGHT, WIDTH, "human")
@@ -422,18 +416,18 @@ if __name__ == "__main__":
 
     while cur_dist < 1980:
         
-        action = np.random.randint(1, 50, 1)
+        action = np.random.randint(49, 50, 1)
 
-        print(action)
+        #print(action)
         observation, reward, terminated, info = game.step(action)
         velocity_i.append(observation['velocity'])
         power_cap_i.append(observation['total_power_capacity'])
         cur_dist = observation['total_distance_travelled']
         dist_i.append(cur_dist)
         time.sleep(0.2)
-        game.cur_ts += 1
+        
 
-    game.exit()
+
     plt.plot(velocity_i)
     plt.show()
 
