@@ -27,7 +27,6 @@ MAX_DISTANCE = 10000 # 1 km away, due to change.
 
 INTERVAL_SIZE = 5
 
-
 TOTAL_ACTION_SPACE = 50 # Param for Training
 
 # Math constants
@@ -36,6 +35,9 @@ B = 222
 CP = 4.2
 MASS = 77 # in kilos
 G = 9.81 # in netwons
+R = 0.0046 # Rolling resistance constant
+AIR = 0.00193 # Air resistance constant
+DRAG_COEFF = 0.42 # Drag coefficient for a half circle
 
 
 
@@ -76,7 +78,8 @@ class BikersEnv(gym.Env):
         self.background = None
         self.ground = None
         self.bike = None
-        self.cur_AWC_pos = 0.1
+        self.cur_AWC_pos = 0.5
+        self.cur_vel = 0
 
         self.font = None
 
@@ -137,18 +140,20 @@ class BikersEnv(gym.Env):
         '''
         # Get how much power we're outputting in watts given our agent's input.
         cur_p_o = self.power_output(action) 
+        # Power output is measured in joules, so we effectively get kinetic energy. 
 
         # Calculate the resistance we face given that power output and our current state. 
-        angle, downward_force = self.resistance(self.cur_distance, cur_p_o)
+        resistance = self.resistance(self.cur_distance, cur_p_o)
 
         # Calculate where we are on the AWC curve as a function of our current power output
-        rr = self.recovery_rate(cur_p_o) # todo
+        # Returns nothing because it modifies the class variable. 
+        self.recovery_rate(cur_p_o) 
 
         # Calculate how far we travelled in the race as a function of our power and resistances. 
-        dist_travelled = self.distance_travelled(cur_p_o, angle, downward_force)
-        print("distance travelled:", dist_travelled.astype(int))
+        self.calc_velocity(cur_p_o, resistance)
+        print("distance travelled:", self.cur_vel)
 
-        self.cur_distance += dist_travelled.astype(int) // 5
+        self.cur_distance += self.cur_vel.astype(int) // 5
         print(self.cur_distance)
         new_state = x[self.cur_distance]
 
@@ -161,11 +166,8 @@ class BikersEnv(gym.Env):
 
         # current max distance = 1k or a value of 1000. This is due to change. 
         observation = {
-                    "distance_travelled" : dist_travelled,
-                    "power_output" : cur_p_o,
-                    "recovery_rate" : rr,
-                    "angle" : angle,
-                    "wind_resistance" : downward_force,
+                    "velocity" : self.cur_vel,
+                    "total_power_capacity" : cur_p_o,
                     "total_distance_travelled" : self.cur_distance
                     }
         
@@ -186,7 +188,7 @@ class BikersEnv(gym.Env):
 
         # render everything if we ask to render.
         if self.render_mode != "none":
-            self.render(dist_travelled)
+            self.render(self.cur_vel)
 
         return observation, reward, terminated, info
     
@@ -224,32 +226,40 @@ class BikersEnv(gym.Env):
 
     def resistance(self, state, power_output):
         '''
-        Takes in some output from power_output. Currently, our resistance is just a function of our downward slope. 
+        
         '''
         angle = self.angles(state)
         #print("Angle!: ", angle)
         downward_force = G*MASS*np.cos(angle)
-        return angle, downward_force
+
+        rolling_resistance = R*G*MASS
+
+        drag = 0.5*0.00193*(self.cur_vel**2)*DRAG_COEFF
+
+        total_resistance = downward_force + rolling_resistance + drag
+
+        return -total_resistance
 
     def power_output(self, action):
         '''
         Takes in the power coefficient which is the output from the agent. 
 
         We calculate our max power by determining our relative power, which is where our agent is on the curve.    
-        We return our power output in watts  
+        Once we calculate our max power, we can get our power as a function of what the agent outputs. 
 
         '''
-        max_AWC = self.output_rel_power(self.cur_AWC_pos)*MASS
-        return action*max_AWC
+        max_AWC = self.output_power(self.cur_AWC_pos)*MASS
+        print("POWER OUTPUT: ", max_AWC)
+        return action*(max_AWC + CP)
 
-    def distance_travelled(self, power_output, angle, downward_force):
-        ''' Distance = 
-            Power = m * g * v, so v = P/mg
-            Distance = v^2*sin(2*theta)/g, so
-            D = P^2*Sin(2theta)/(m^2*g^2)
-            
-            '''
-        return power_output**2*(np.sin(2*angle))/(G*MASS)**2
+    def calc_velocity(self, cur_KE, resistance):
+        
+        prev_KE = (1/2)*MASS*(self.cur_vel)**2
+        total_force = prev_KE + cur_KE - resistance
+        if total_force > 0:
+            self.cur_vel = np.sqrt(2*(total_force)/MASS)
+        else:
+            self.cur_vel = -np.sqrt(2*(-1*total_force)/MASS)
 
     def recovery_rate(self, current_power):
         
@@ -261,13 +271,18 @@ class BikersEnv(gym.Env):
 
         # The recovery rate works by tracking where we are on the curve. If we start to go towards zero, we need 
         # some place to stop. Since AWC' -> inf as x -> 0, I picked 0.1 as our max power.
-        if self.cur_AWC_pos + rr <= 0.1:
-            self.cur_AWC_pos = 0.1
+        if self.cur_AWC_pos + rr <= 0.5:
+            self.cur_AWC_pos = 0.5
         else:
             self.cur_AWC_pos + rr
         
-    def output_rel_power(self, T):
-        return np.exp(-0.005*T)
+    def output_power(self, T):
+        '''
+        This power curve is derived from paper 1: Optimal pacing strategy modeling of cycling individual time trials.
+        To get our W, or our maximum work capacity at any given time, we keep track of where we are on the curve. Because 
+        we get the power output over one second, we take a right end reimann estimation to get our total area under the curve. 
+        '''
+        return CP + 170/(T+1)
     
     def angles(self, x):
         return np.piecewise(x, 
@@ -400,7 +415,7 @@ if __name__ == "__main__":
 
     # for now our agent is random. 
 
-    while True:
+    for _ in range(10):
         
         action = np.random.randint(30, 50, 1)
 
@@ -409,7 +424,7 @@ if __name__ == "__main__":
         print(observation["total_distance_travelled"])
         rewards.append(reward)
         game.cur_ts += 1
-        #time.sleep(1)
+        time.sleep(0.5)
 
     #grads = angle(10000)
     #print(grads)
