@@ -89,8 +89,8 @@ class DQNAgent():
             q_values = self.target_model.forward(input_state)
 
         #print(q_values)
-        #if rnd.random() < EPSILON + EPSILON_END:
-        if rnd.random() < 0.15:
+        if rnd.random() < EPSILON + EPSILON_END:
+        #if rnd.random() < 0.15:
             # Pick a random action
             action = torch.tensor([rnd.randrange(0, TOT_ACTION_SPACE)])
         else:
@@ -117,11 +117,10 @@ class DQNAgent():
         next_state = []
         for _ in range(BATCH_SIZE):
             s, a, r, n = self.replay_memory.collect_memory()
-            s = np.squeeze(s, axis=0)
 
             state.append(torch.tensor(s, dtype=torch.float32).to(device))
             action.append(a)
-            reward.append(r)
+            reward.append(torch.tensor(r, dtype=torch.float32).to(device))
             next_state.append(torch.tensor(n, dtype=torch.float32).to(device))
 
         # Convert list of tensors to tensor.
@@ -180,10 +179,11 @@ class DQNAgent():
         torch.save(self.target_model.state_dict(), save_to_path)
 
     def load(self):
-        self.target_model.load_state_dict(torch.load(path))
-        self.model.load_state_dict(torch.load(path))
+        #self.target_model.load_state_dict(torch.load(path))
+        #self.model.load_state_dict(torch.load(path))
+        pass
 
-        print(f'CURRENT MODEL VERSION: {path}')
+        #print(f'CURRENT MODEL VERSION: {path}')
 
 
 # if __name__ == "__main__":

@@ -11,6 +11,8 @@ import gym
 from gym import spaces
 import time
 import json
+from DQ_Agent import DQNAgent
+import torch
 
 # CONSTANTS:
 
@@ -29,6 +31,7 @@ MAX_DISTANCE = 10000 # 1 km away, due to change.
 INTERVAL_SIZE = 5
 
 NUM_COEFFICIENTS = 50
+EPISODES = 50
 
 # Math constants
 A = 0.005
@@ -97,9 +100,10 @@ class BikersEnv(gym.Env):
 
         # Agent variables
         # ---------------------------
-        self.cur_AWC_pos = 0.5
+        self.cur_AWC_pos = 0
         self.cur_velocity = 0
         self.cur_distance = MIN_DISTANCE
+        self.terminated = 0
 
 
     def step(self, action: int):
@@ -108,10 +112,20 @@ class BikersEnv(gym.Env):
         # regularize the action into something we can use (action -> [0, 50])
         action = action/NUM_COEFFICIENTS
 
-        max_AWC = (CP + 170/(self.cur_AWC_pos+1))*MASS
+        '''
+        This power curve is derived from paper 1: Optimal pacing strategy modeling of cycling individual time trials.
+        An important note, we shift our function over on the x axis to cap our maximum power output
+        To get our W, or our maximum work capacity at any given time, we keep track of where we are on the curve. Because 
+        we get the power output over one second, we integrate 
+        '''
+
+        max_AWC = (CP + 170/((self.cur_AWC_pos)+10))*MASS
+
+        print("Max AWC: ", max_AWC)
+        print("on curve: ", self.cur_AWC_pos)
 
         # How much power the agent is outputting in watts
-        cur_agent_power_output = (max_AWC + CP)
+        cur_agent_power_output = (max_AWC)*action
 
         # Calculate the resistance given power output and our current state.
         resistance = self.resistance(self.cur_distance)
@@ -124,8 +138,11 @@ class BikersEnv(gym.Env):
         self.calc_velocity(cur_agent_power_output, resistance)
 
         self.cur_distance += self.cur_velocity.astype(int) // INTERVAL_SIZE
-
-        new_agent_position = x[self.cur_distance]
+        if self.cur_distance >= MAX_DISTANCE//5:
+            new_agent_position = x[(MAX_DISTANCE//5) - 1]
+        else:
+            new_agent_position = x[self.cur_distance]
+        
 
         observation = {
                     "velocity" : self.cur_velocity,
@@ -134,17 +151,16 @@ class BikersEnv(gym.Env):
                     }
 
         # existance penalty + how far away from total distance
-        if new_agent_position == MAX_DISTANCE:
+        if new_agent_position >= MAX_DISTANCE:
             reward = 10
         else:
             reward = -1 + new_agent_position/MAX_DISTANCE
 
-        terminated = 0
+        self.terminated = 0
 
         # if distance <= 0
-        if self.cur_distance == MAX_DISTANCE:
-            reward = 100
-            terminated = 1
+        if self.cur_distance >= MAX_DISTANCE//5:
+            self.terminated = 1
 
         # render everything if we ask to render.
         if self.render_mode != None:
@@ -158,7 +174,7 @@ class BikersEnv(gym.Env):
             "reward": reward,
         }, indent=4, cls=NpEncoder))
 
-        return observation, reward, terminated, info
+        return observation, reward, self.terminated, info
 
 
     def render(self, vel):
@@ -181,27 +197,40 @@ class BikersEnv(gym.Env):
         self.screen.blit(text_surface_ep, (0,30))
         pygame.display.update()
 
-
     def reset(self):
-        self.distance = MAX_DISTANCE
+        self.dt = 1
+        self.cur_timestep = 0
+        self.cur_episode = 0
+
+        # Agent variables
+        # ---------------------------
+        self.cur_AWC_pos = 0
+        self.cur_velocity = 0
+        self.cur_distance = MIN_DISTANCE
+        self.terminated = 0
+        return ({ "velocity" : self.cur_velocity,
+                    "total_power_capacity" : 0,
+                    "total_distance_travelled" : self.cur_distance
+                    }, self.terminated)
 
     def resistance(self, state):
-        angle = self.angles(state)
+        angle = self.angles(state*INTERVAL_SIZE)
 
-        downward_force = G*MASS*np.cos(angle)
+        downward_force = G*MASS*np.sin((angle)*(np.pi/180))
 
         rolling_resistance = R*G*MASS
 
-        drag = 0.5*0.00193*(self.cur_velocity**2)*DRAG_COEFF
+        drag = 0.0193*(self.cur_velocity**2)
 
         total_resistance = downward_force + rolling_resistance + drag
 
-        return -total_resistance
+        return -total_resistance * self.cur_velocity
+
 
     def calc_velocity(self, cur_KE, resistance):
 
         prev_KE = (1/2)*MASS*(self.cur_velocity)**2
-        total_force = (prev_KE + cur_KE)/2 - resistance
+        total_force = 0.9*prev_KE + cur_KE + resistance
         if total_force > 0:
             self.cur_velocity = np.sqrt(2*(total_force)/MASS)
         else:
@@ -210,19 +239,20 @@ class BikersEnv(gym.Env):
     def set_recovery_rate(self, cur_power):
         # If current power is greater than CP
         # we want to be further on the curve.
-        if cur_power//MASS > CP:
-            fatigue = ((cur_power//MASS) - CP)
+        if cur_power/MASS > CP:
+            fatigue = ((cur_power/MASS) - CP)
         else:
             fatigue = -(0.0879*(cur_power/MASS) + 2.9214 - CP)
 
-        if self.cur_AWC_pos + fatigue <= 0.5:
-            self.cur_AWC_pos = 0.5
+        print(fatigue)
+        if self.cur_AWC_pos + fatigue <= 0:
+            self.cur_AWC_pos = 0
         else:
             self.cur_AWC_pos += fatigue
 
     def angles(self, x):
         return np.piecewise(x,
-                [np.logical_and(0 <= x, x <= 1000),
+                [np.logical_and(0 <= x,  x <= 1000),
                 np.logical_and(1000 < x, x <= 2000),
                 np.logical_and(2000 < x, x <= 3000),
                 np.logical_and(3000 < x, x <= 4000),
@@ -233,16 +263,16 @@ class BikersEnv(gym.Env):
                 np.logical_and(8000 < x, x <= 9000),
                 np.logical_and(9000 < x, x <= 10000)],
 
-                [lambda x : 1,
-                    lambda x : -1,
-                    lambda x : 1,
-                    lambda x : -1,
-                    lambda x : 1,
-                    lambda x : -1,
-                    lambda x : 1,
-                    lambda x : -1,
-                    lambda x : 1,
-                    lambda x : -1]
+                [lambda x : 2.8624,
+                    lambda x : -2.8624,
+                    lambda x : 2.8624,
+                    lambda x : -2.8624,
+                    lambda x : 2.8624,
+                    lambda x : -2.8624,
+                    lambda x : 2.8624,
+                    lambda x : -2.8624,
+                    lambda x : 2.8624,
+                    lambda x : -2.8624]
                 )
 
 # Game logic functions / classes
@@ -344,24 +374,52 @@ class Bike(pygame.sprite.Sprite):
 
 if __name__ == "__main__":
     game = BikersEnv(HEIGHT, WIDTH, "human")
-    game.reset()
-    velocity_i = []
-    power_cap_i = []
-    dist_i = []
+    agent = DQNAgent(3, NUM_COEFFICIENTS)
+    rewards = []
+    time_per_ep = []
     cur_dist = 0
+    terminated = 0
 
-    # for now our agent is random.
+    for e in range(20):
+        print("TIMESTEP: ", e)
+        observation, terminated = game.reset()
+        observation = [
+                observation['velocity'],
+                observation['total_power_capacity'],
+                observation['total_distance_travelled']
+        ]
+        ep_reward = 0
+        
+        while terminated == 0:
+            
+            prev_observation = observation
 
-    while cur_dist < 1980:
+            action = agent.get_action(prev_observation)
+            observation, reward, terminated, info = game.step(action)
+            cur_dist = observation['total_distance_travelled']
 
-        action = 50
-        observation, reward, terminated, info = game.step(action)
-        velocity_i.append(observation['velocity'])
-        power_cap_i.append(observation['total_power_capacity'])
-        cur_dist = observation['total_distance_travelled']
-        dist_i.append(cur_dist)
-        time.sleep(0.2)
+            observation = [
+                observation['velocity'],
+                observation['total_power_capacity'],
+                observation['total_distance_travelled']
+            ]
 
-    game.exit()
-    plt.plot(velocity_i)
+            input_memory = (prev_observation, action, reward, observation)
+            agent.replay_memory.store_memory(input_memory)
+            ep_reward += reward
+
+            agent.learn()
+
+        rewards.append(ep_reward)
+        time_per_ep.append(game.cur_timestep)
+        print("FINISHED TIMESTEP: ", e)
+
+    
+    #power_cap_i = np.array(power_cap_i)/MASS
+    #plt.plot(power_cap_i, label='power cap at time t')
+    #plt.plot(velocity_i, label='velocity at time t')
+    plt.plot(rewards, label='rewards')
+    plt.plot(time_per_ep, label='time_per_ep')
+    plt.legend()
+    plt.grid()
     plt.show()
