@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from collections import deque
+import time
 
 # HYPERPARAMS
 REPLAY_BUFFER_MAX_LENGTH = 100000
@@ -24,7 +25,7 @@ save_to_path = ""
 
 
 class ReplayBuffer():
-    
+
     def __init__(self):
         self.memory = deque(maxlen = REPLAY_BUFFER_MAX_LENGTH)
 
@@ -37,10 +38,10 @@ class ReplayBuffer():
         #     return self.memory.pop()
         # else:
         #     return rnd.choice(self.memory)
-        
+
     def erase_memory(self):
         self.memory.clear()
-    
+
     def __len__(self) -> int:
         return len(self.memory)
 
@@ -69,18 +70,20 @@ class DQNAgent():
             nn.ReLU(),
             nn.Linear(100, 100),
             nn.ReLU(),
+            nn.Linear(100, 100),
+            nn.ReLU(),
             nn.Linear(100, output_dims),
         )
         return model
 
-    # Method for predicting an action 
+    # Method for predicting an action
     def get_action(self, state):
         #print(state.shape)
         #state = np.transpose(state, (2, 0, 1))
         #print(state.shape)
         self.actions_taken += 1
         self.total_actions_taken += 1
-        EPSILON = (EPSILON_START)*np.exp(-EPSILON_DECAY*self.total_actions_taken) # EPSILON_END 
+        EPSILON = (EPSILON_START)*np.exp(-EPSILON_DECAY*self.total_actions_taken) # EPSILON_END
 
         with torch.no_grad():
             #input = state_array.reshape(1)
@@ -89,8 +92,8 @@ class DQNAgent():
             q_values = self.target_model.forward(input_state)
 
         #print(q_values)
-        #if rnd.random() < EPSILON + EPSILON_END:
-        if rnd.random() < 0.15:
+        if rnd.random() < EPSILON + EPSILON_END:
+        #if rnd.random() < 0.25:
             # Pick a random action
             action = torch.tensor([rnd.randrange(0, TOT_ACTION_SPACE)])
         else:
@@ -99,12 +102,12 @@ class DQNAgent():
 
 
         return action.item()
-    
+
     def learn(self):
-        ''' We pretty much strictly learn from the memory, not 
+        ''' We pretty much strictly learn from the memory, not
             specifically from the current experience. '''
-        
-        # We just pass through the learn function if the batch size has not been reached. 
+
+        # We just pass through the learn function if the batch size has not been reached.
         if self.replay_memory.__len__() < BUFFER_BATCH_SIZE:
             return
 
@@ -117,29 +120,28 @@ class DQNAgent():
         next_state = []
         for _ in range(BATCH_SIZE):
             s, a, r, n = self.replay_memory.collect_memory()
-            s = np.squeeze(s, axis=0)
 
             state.append(torch.tensor(s, dtype=torch.float32).to(device))
             action.append(a)
-            reward.append(r)
+            reward.append(torch.tensor(r, dtype=torch.float32).to(device))
             next_state.append(torch.tensor(n, dtype=torch.float32).to(device))
 
         # Convert list of tensors to tensor.
 
         state_tensors = torch.stack(state)
         new_state_tensors = torch.stack(next_state)
-        
+
         rewards = torch.stack(reward)
 
-        # One hot encoding our actions. 
+        # One hot encoding our actions.
         action = torch.eye(TOT_ACTION_SPACE)[action].to(device)
 
         #Find our predictions
         with torch.no_grad():
             # This gets the maximum possible Q value of our next turn
             target_predictions = self.target_model(new_state_tensors).max(dim=1)[0]
-        
-        # this gets the models assessed Q value of the current turn. 
+
+        # this gets the models assessed Q value of the current turn.
         model_predictions = self.model(state_tensors)*action
         model_predictions = torch.sum(model_predictions, dim=1)
 
@@ -150,9 +152,9 @@ class DQNAgent():
 
         # Calculate MSE Loss
         loss = criterion(model_predictions, target)
-        
+
         #print(loss)
-        
+
         # backward pass
         self.optimizer.zero_grad()
         loss.backward()
@@ -180,13 +182,13 @@ class DQNAgent():
         torch.save(self.target_model.state_dict(), save_to_path)
 
     def load(self):
-        self.target_model.load_state_dict(torch.load(path))
-        self.model.load_state_dict(torch.load(path))
+        #self.target_model.load_state_dict(torch.load(path))
+        #self.model.load_state_dict(torch.load(path))
+        pass
 
-        print(f'CURRENT MODEL VERSION: {path}')
+        #print(f'CURRENT MODEL VERSION: {path}')
 
 
 # if __name__ == "__main__":
 #     agent = DQNAgent((1, 10, 20), 4)
 #     agent.get_action(np.zeros(10, 20))
-    
