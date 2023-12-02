@@ -8,20 +8,19 @@ import time
 
 # HYPERPARAMS
 REPLAY_BUFFER_MAX_LENGTH = 100000
-BUFFER_BATCH_SIZE = 140
-BATCH_SIZE = 128
+BUFFER_BATCH_SIZE = 72
+BATCH_SIZE = 64
 GAMMA = 1
-TARGET_UPDATE = 16
-EPSILON_START = 0.8 # Epsilon Start
-EPSILON_END = 0.1 # Epsilon End
-EPSILON_DECAY = 0.00008 # Epsilon Decay
-LR = 1e-5
-TOT_ACTION_SPACE = 50
+TARGET_UPDATE = 32
+EPSILON_START = 0.9 # Epsilon Start
+EPSILON_END = 0.05 # Epsilon End
+EPSILON_DECAY = 0.00001 # Epsilon Decay
+LR = 1e-3
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-load_from_path = ""
-save_to_path = ""
+load_from_path = "best_agent"
+save_to_path = "best_agent"
 
 
 class ReplayBuffer():
@@ -66,13 +65,11 @@ class DQNAgent():
     def create_model(self, input_dims, output_dims):
         # Very simple model. Not sure that we need anything more complex than this.
         model = nn.Sequential(
-            nn.Linear(input_dims, 100),
+            nn.Linear(input_dims, 24),
             nn.ReLU(),
-            nn.Linear(100, 100),
+            nn.Linear(24, 24),
             nn.ReLU(),
-            nn.Linear(100, 100),
-            nn.ReLU(),
-            nn.Linear(100, output_dims),
+            nn.Linear(24, output_dims),
         )
         return model
 
@@ -95,7 +92,7 @@ class DQNAgent():
         if rnd.random() < EPSILON + EPSILON_END:
         #if rnd.random() < 0.25:
             # Pick a random action
-            action = torch.tensor([rnd.randrange(0, TOT_ACTION_SPACE)])
+            action = torch.tensor([rnd.randrange(0, self.output_dims)])
         else:
             action = torch.argmax(q_values)
         #print(action)
@@ -121,10 +118,10 @@ class DQNAgent():
         for _ in range(BATCH_SIZE):
             s, a, r, n = self.replay_memory.collect_memory()
 
-            state.append(torch.tensor(s, dtype=torch.float32).to(device))
+            state.append(s)
             action.append(a)
             reward.append(torch.tensor(r, dtype=torch.float32).to(device))
-            next_state.append(torch.tensor(n, dtype=torch.float32).to(device))
+            next_state.append(n)
 
         # Convert list of tensors to tensor.
 
@@ -134,7 +131,7 @@ class DQNAgent():
         rewards = torch.stack(reward)
 
         # One hot encoding our actions.
-        action = torch.eye(TOT_ACTION_SPACE)[action].to(device)
+        action = torch.eye(self.output_dims)[action].to(device)
 
         #Find our predictions
         with torch.no_grad():
@@ -176,19 +173,16 @@ class DQNAgent():
         if self.update_target_counter % TARGET_UPDATE == 0:
             print('updating...')
             self.target_model.load_state_dict(self.model.state_dict())
-            print('Current Epsilon, ', (EPSILON_START - (EPSILON_START)*np.exp(-EPSILON_DECAY*self.total_actions_taken)))
+            print('Current Epsilon, ', ((EPSILON_START)*np.exp(-EPSILON_DECAY*self.total_actions_taken)))
 
     def save(self):
         torch.save(self.target_model.state_dict(), save_to_path)
 
-    def load(self):
-        #self.target_model.load_state_dict(torch.load(path))
-        #self.model.load_state_dict(torch.load(path))
+    def load(self, path):
+        self.target_model.load_state_dict(torch.load(path))
+        self.model.load_state_dict(torch.load(path))
+        
+
+        print(f'CURRENT MODEL VERSION: {path}')
         pass
 
-        #print(f'CURRENT MODEL VERSION: {path}')
-
-
-# if __name__ == "__main__":
-#     agent = DQNAgent((1, 10, 20), 4)
-#     agent.get_action(np.zeros(10, 20))
