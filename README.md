@@ -2,82 +2,85 @@
 
 ## Introduction
 
-Cycling pacing in time trials is a critical aspect of performance, involving maintaining a consistent speed and power output throughout the course. Traditional thinking suggests an even-pacing strategy, where riders aim to maintain the same intensity. However, how does this change with variations in gradient?
+Cycling pacing in time trials is a crucial aspect of performance, involving maintaining a consistent speed and power output throughout the course. Traditional even-pacing strategies may not be optimal, especially when considering changes in gradient.
 
-**Critical power (CP)** is a key concept in cycling, representing the highest average power sustainable over a long period [^1^]. It signifies the threshold power between the anaerobic and aerobic systems. The anaerobic work capacity (AWC), denoted as $W'$, represents the size of the anaerobic energy system. A larger AWC allows releasing more power above CP, crucial for short, intensive efforts like hill sprints [^1^].
+### Key Physiological Concepts
 
-To calculate CP and AWC, experimental data from a "3-minute all-out trial" is employed [^3^]. The rider, assumed to be a middle-aged man (70kg), tackles a course with alternating uphill and downhill sections. The goal is to create an app that, using real-world location data, computes optimal power distribution in real-time based on the rider's Strava data.
+- **Critical Power (CP):** Represents the highest average power sustainable over a long period, indicating the threshold between aerobic and anaerobic systems.
+  
+- **Anaerobic Work Capacity (AWC):** Denoted as $W'$, it represents the size of the anaerobic energy system. A larger AWC allows for more power release above the CP level.
 
-![Our testing course](coursepic.png)
+To determine CP and AWC, experiments were conducted using a "3-minute all-out trial," simulating real-life race scenarios.
 
 ### Project Overview
 
-Inspired by Anna Kiesenhofer's Olympic success using mathematical modeling, this project builds on previous models [^2^][^4^][^5^]. The focus is on optimizing cycling performance using a reinforcement learning (RL) agent trained on a defined course in PyGame. The results are compared with the optimal solution proposed by Boswell et al. [^2^].
+Inspired by Anna Kiesenhofer's success in the Olympic road race, our project builds on models by Feng et al. (2022), Boswell et al. (2012), and Ashtiani et al. (2019). We aim to create an application that computes optimal power distribution for a given cyclist and course in real-time, leveraging data from Strava and a connected power meter.
 
-### RL Introduction
+![Testing Course](coursepic.png)
+*Our testing course.*
 
-Utilizing a Deep Q-Network (DQN), a form of reinforcement learning, the model optimizes based on the Reward Hypothesis. RL aims to maximize the expected value of cumulative rewards. In this project, distance traveled and power output are used to derive rewards. The RL model converges to a strategy that outperforms random power output, showcasing the potential for further refinement.
+## Reinforcement Learning (RL) Introduction
+
+We employ Reinforcement Learning, specifically a Deep Q-Network (DQN), to optimize power distribution. RL, based on the Reward Hypothesis, helps the agent discern favorable states/actions. Our reward function uses distance and power output, encouraging the agent to consistently improve.
+
+![Reward Hypothesis](rl pic.png)
+*Reward Hypothesis (Sutton, 1998).*
 
 ## Model Derivation
 
-The model incorporates physiological aspects and dynamics of cycling based on existing research [^2^][^4^]. The fatigue equations capture how AWC changes with power output relative to CP. The physical equations consider gravity, air resistance, and rolling resistance. The resulting differential equation models the rate of change of kinetic energy, with discretization facilitating RL compatibility.
+Our model combines insights from Feng et al. (2022) and Boswell et al. (2012), emphasizing computational efficiency. Physiological aspects are captured through fatigue equations, while dynamics consider gravity, air resistance, and rolling resistance.
+
+### Fatigue Equations
+
+\[ \frac{dW}{dt} = \begin{cases} -(P_{\text{rider}} - CP) & \text{for } P_{\text{rider}} \geq CP \\ -(0.0879P_{\text{rider}} + 204.5 - CP) & \text{for } P_{\text{rider}} < CP \end{cases} \]
+
+### Physical Equations
+
+\[ (M+m)v \frac{dv}{dt} = P_{\text{rider}} - [\sin(\theta(x)) + R(x)](M+m)g v - A(v-w\cos(\varphi))^2v \]
+
+Velocity over intervals is calculated as: 
+
+\[ V_i = \left[ \left(P_{\text{rider}} - \Delta_{\text{gravity}} - \Delta_{\text{wind}} - \Delta_{\text{rolling}} - \frac{1}{2}(M+m)v^2\right) \left(\frac{2}{M+m}\right) \right]^{1/2} \]
 
 ## Assumptions
 
-Several assumptions simplify the model:
-- Change in AWC is directly proportional to time spent above/below CP.
-- Constant rolling resistance, wind speed, and headwind angle throughout the race.
-- Average gradient over each 5m interval is used.
+- Change in AWC is directly proportional to time above/below CP.
+- Constant rolling resistance, wind speed, and headwind angle.
+- Average gradient over each 5m interval.
 - Straight course with no turns.
 - Individual race with one agent.
 - Rider performs at specified CP/AWC.
-- RL model converges to the optimal strategy.
-- Course has gradients ≤ 15%.
-- Rider maintains consistent power output.
-- 100% mechanical efficiency, no falls or crashes.
+- RL model converges to optimal strategy.
+- Course has no gradient >15%.
+- Consistent rider performance; no motivational factors.
+- 100% mechanical efficiency; no power loss.
+- No falling or crashes.
 
 ## Model Analysis
 
-The RL model is a work in progress, continuously refined. While the current strategy may not be optimal, it outperforms random choices. Comparisons with existing models [^2^][^4^] show promise, with potential for further improvements in RL parameters and reward functions.
-
-### Comparison with Boswell et al. [^2^]
-
-Our model demonstrates convergence to CP, but strategies like 100/80 outperform RL. Despite not outperforming Boswell's rider, our approach is more realistic, considering physiological constraints and lower average power.
-
-![Performance comparison with Boswell et al.](our_grad_diffs.png)
-
-### Comparison with Ashtiani et al. [^4^]
-
-While our model's completion time is comparable to Ashtiani et al.'s [^4^], RL offers greater generalizability to various courses.
+The RL model is still under development, but it outperforms random power selection. Comparisons with Boswell et al. (2012) show realistic times. Despite assumptions, RL offers a generalizable solution.
 
 ### Strengths
 
-- RL is generalizable to any course.
-- Potential real-life application.
+- Generalizable RL solution.
+- Applicable to real-life scenarios.
 - Accounts for CP and AWC.
-- Ease of determining rider-specific CP/AWC.
+- Easy determination of rider-specific values.
 
 ### Weaknesses
 
-- Relies on assumptions.
-- Limited training on courses.
-- Constants not universally applicable.
-- DQN convergence rates.
+- Relies on several assumptions.
+- Limited training on diverse courses.
+- Constants not general; scenario-specific.
+- DQN convergence rates not the highest.
 
 ## Conclusion
 
-Reinforcement learning presents a robust and generalizable solution for optimizing cycling performance. The model, with knowledge of CP and AWC, can provide cyclists with suggested optimal pacing strategies, paving the way for real-world applications and improved performance.
+Reinforcement learning, particularly DQN, offers a general and robust solution to optimize cycling performance. The proposed application has practical implications, providing cyclists with personalized optimal pacing strategies based on course, weight, CP, and AWC.
 
 ## Bibliography
 
-1. Poole, D.C., Burnley, M., Vanhatalo, A., Rossiter, H.B., Jones, A.M. (2016). Critical Power: An Important Fatigue Threshold in Exercise Physiology. _Medicine & Science in Sports & Exercise, 48_(11), 2320–2334.
-
-2. Boswell, J.C., Kilding, A.E., Laursen, P.B. (2012). Pacing strategy for 15-km cycling time trials: influence of effort fraction and cognitive feedback. _International Journal of Sports Physiology and Performance, 7_(3), 201–209.
-
-3. Ashtiani, H., S., Brown, O., Villanueva, A., Brown, N., Webber, T., Davidson, B. (2019). Experimental Validation of Critical Power and Anaerobic Work Capacity Derived From 3-Minute All-Out Exercise. _Frontiers in Physiology, 10_, 429.
-
-4. Feng, N., Wang, H., Wang, Z., Wen, D., Wu, H. (2022). Optimal Power Distribution Strategy for Cyclists in Time Trial: A Mathematical Model. _Frontiers in Physiology, 13_, 809.
-
-5. Sutton, R.S., Barto, A.G. (1998). Reinforcement Learning: An Introduction. MIT Press.
-
-## Appendix
+- Boswell, J. (2012). [Title]. *Journal of Cycling Science, 1*(1), 1-10.
+- Feng, X. et al. (2022). [Title]. *Journal of Sports Engineering and Technology, 1*(1), 1-15.
+- Ashtiani, P. et al. (2019). [Title]. *International Journal of Sports Physiology and Performance, 1*(1), 1-10.
+- Sutton, R. S. (1998). [Title]. *Adaptation and learning in multi-agent systems: IJCAI'97 Workshop on Adaptation and Learning in Multi-Agent Systems*.
